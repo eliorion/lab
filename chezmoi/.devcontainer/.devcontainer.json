@@ -1,0 +1,9 @@
+{
+  "build": {
+    "context": "..",
+    "dockerfile": "Dockerfile"
+  }
+  "features": {
+    "ghcr.io/devcontainers-extra/features/mise:1": {}
+}
+}
