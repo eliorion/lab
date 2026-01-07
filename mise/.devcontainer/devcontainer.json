@@ -2,5 +2,6 @@
   "build": {
     "context": "..",
     "dockerfile": "Dockerfile"
-  }
+  },
+  "postCreateCommand": "scripts/setup"
 }
