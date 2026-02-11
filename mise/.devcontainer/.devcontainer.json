@@ -1,1 +1,7 @@
-{"image":"mcr.microsoft.com/devcontainers/base:ubuntu"}
+{
+  "build": {
+    "context": "..",
+    "dockerfile": "Dockerfile"
+  },
+  "postCreateCommand": "scripts/setup"
+}
