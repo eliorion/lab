@@ -1,0 +1,11 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: iscsi-csi
+provisioner: iscsi.csi.k8s.io
+parameters:
+  dsm: 192.168.1.199
+  location: /iscsi
+  protocol: iscsi
+reclaimPolicy: Delete
+allowVolumeExpansion: true

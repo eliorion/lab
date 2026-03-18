@@ -1,0 +1,116 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: glpi
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: glpi
+data:
+  TIMEZONE: "Europe/Paris"
+  GLPI_DB_PORT: "3306"
+  GLPI_DB_HOST: "db-glpi"
+  GLPI_DB_NAME: "glpi_db"
+  GLPI_DB_USER: "glpi"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: db-glpi
+data:
+  MARIADB_DATABASE: "glpi_db"
+  MARIADB_USER: "glpi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: glpi
+  namespace: glpi
+spec:
+  selector:
+    app: glpi
+  ports:
+    - port: 80
+      targetPort: 80
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: glpi-pvc
+  namespace: glpi
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: nfs-csi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: db-glpi-pvc
+  namespace: glpi
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: nfs-csi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: glpi
+  namespace: glpi
+  labels:
+    app: glpi
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: glpi
+  template:
+    metadata:
+      labels:
+        app: glpi
+    spec:
+      containers:
+      - name: glpi
+        image: docker.io/glpi/glpi:11.0.1
+        envFrom:
+          - configMapRef:
+              name: glpi
+          - secretRef:
+              name: glpi
+        volumeMounts:
+          - mountPath: /var/glpi
+            name: glpi-pv
+            readOnly: false
+        ports:
+        - containerPort: 80
+
+      - name: db-glpi
+        image: docker.io/library/mariadb:11.8
+        envFrom:
+          - configMapRef:
+              name: db-glpi
+          - secretRef:
+              name: db-glpi
+        volumeMounts:
+          - mountPath: /var/lib/mysql
+            name: db-glpi-pv
+            readOnly: false
+        ports:
+          - containerPort: 3306
+
+      volumes:
+        - name: glpi-pv
+          persistentVolumeClaim:
+            claimName: glpi-pvc
+
+        - name: db-glpi-pv
+          persistentVolumeClaim:
+            claimName: db-glpi-pvc
