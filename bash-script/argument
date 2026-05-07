@@ -1,0 +1,28 @@
+#!/bin/bash
+
+echo "Special arguments:"
+echo "*: $*"
+echo "@: $@"
+echo "#: $#"
+echo "?: $?"
+echo "-: $-"
+echo "$: $$"
+echo "!: $!"
+echo "0: $0"
+
+echo "Inputs arguments:"
+echo "1: $1"
+echo "2: $2"
+
+echo "Usefull standards variables:"
+echo "PWD: $PWD"
+
+echo "Parameters expansion"
+TEST01=$1
+TEST02=$2
+echo "${TEST01:-test01}"
+echo "${TEST02:="test02"}"
+
+echo "Usefull commands:"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+echo "Script is in: $SCRIPT_DIR"
