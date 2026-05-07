@@ -1,0 +1,9 @@
+[tools]
+pre-commit = "latest"
+python = "3.12"
+
+[settings]
+experimental = true
+
+[hooks]
+enter = "bash ./scripts/setup_project"
