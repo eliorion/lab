@@ -8,3 +8,4 @@ Container my own testing scripts, tools for learning or test purpuses.
 `/homelab-v0`: Chart of the homelab-v0
 `kubernetes`: Test some kubernetes chart
 `mise`: Mise test for my dotfiles setup
+`scripts/migration-bitbucket-project`: Scripts to migrate a Bitbucket project (all repositories + Git LFS) between two Bitbucket servers

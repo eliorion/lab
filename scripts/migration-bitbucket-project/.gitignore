@@ -1,0 +1,4 @@
+# credentials
+.env
+# everything produced by the scripts (logs, reports, state, temporary copies)
+output/
