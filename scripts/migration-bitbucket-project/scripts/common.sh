@@ -5,12 +5,16 @@ set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 [ -f "$ROOT/.env" ] || { echo "Missing $ROOT/.env - copy .env.example to .env and fill it in"; exit 1; }
+# (Windows line endings removed, in case .env was edited with Notepad)
 # shellcheck source=/dev/null
-source "$ROOT/.env"
+source <(tr -d '\r' <"$ROOT/.env")
 
 SOURCE_URL="${SOURCE_URL%/}"
 TARGET_URL="${TARGET_URL%/}"
 TARGET_PROJECT="${TARGET_PROJECT:-$SOURCE_PROJECT}"
+# Bitbucket project keys are upper case (ccm_imp -> CCM_IMP)
+SOURCE_PROJECT=$(printf '%s' "$SOURCE_PROJECT" | tr '[:lower:]' '[:upper:]')
+TARGET_PROJECT=$(printf '%s' "$TARGET_PROJECT" | tr '[:lower:]' '[:upper:]')
 if [ -n "${CA_BUNDLE:-}" ]; then export CURL_CA_BUNDLE="$CA_BUNDLE" GIT_SSL_CAINFO="$CA_BUNDLE"; fi
 
 # Everything the scripts create goes in output/
@@ -48,10 +52,16 @@ export GIT_CONFIG_KEY_0="http.$SOURCE_URL/.extraHeader" GIT_CONFIG_VALUE_0="$SOU
 export GIT_CONFIG_KEY_1="http.$TARGET_URL/.extraHeader" GIT_CONFIG_VALUE_1="$TARGET_AUTH"
 export GIT_CONFIG_KEY_2="lfs.locksverify" GIT_CONFIG_VALUE_2="false"
 export GIT_TERMINAL_PROMPT=0
+# Windows (Git Bash) only: trust the certificates of the Windows certificate store
+if [ "${WINDOWS_CERT_STORE:-false}" = true ]; then
+  export CURL_SSL_BACKEND=schannel GIT_CONFIG_COUNT=4
+  export GIT_CONFIG_KEY_3="http.sslBackend" GIT_CONFIG_VALUE_3="schannel"
+fi
 
 # ---- REST API ---------------------------------------------------------------------------
 # api SOURCE|TARGET METHOD PATH [JSON]  ->  sets $HTTP (status code) and $BODY (response)
 # The SOURCE server only accepts GET: the scripts can never modify it.
+# The login header is given to curl on its standard input (never on the command line).
 api() {
   local side=$1 method=$2 path=$3 data=${4:-} url auth out
   if [ "$side" = SOURCE ]; then
@@ -61,15 +71,16 @@ api() {
     url=$TARGET_URL auth=$TARGET_AUTH
   fi
   if [ -n "$data" ]; then
-    out=$(curl -sS --connect-timeout 15 -K <(echo "header = \"$auth\"") -X "$method" \
+    out=$(curl -sS --connect-timeout 15 -K - <<<"header = \"$auth\"" -X "$method" \
       -H 'Content-Type: application/json' -H 'X-Atlassian-Token: no-check' -d "$data" \
       -w '\n%{http_code}' "$url$path")
   else
-    out=$(curl -sS --connect-timeout 15 -K <(echo "header = \"$auth\"") -X "$method" \
+    out=$(curl -sS --connect-timeout 15 -K - <<<"header = \"$auth\"" -X "$method" \
       -H 'X-Atlassian-Token: no-check' -w '\n%{http_code}' "$url$path")
   fi
   HTTP=${out##*$'\n'}
   BODY=${out%$'\n'*}
+  [ -n "$HTTP" ] || HTTP=000   # curl could not connect at all
 }
 
 # field NAME -> first value of "NAME" in $BODY (enough for the simple answers used here)

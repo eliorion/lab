@@ -1,0 +1,2 @@
+# keep Unix line endings for the scripts, even on Windows
+*.sh text eol=lf
