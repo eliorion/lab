@@ -30,7 +30,17 @@ for side in SOURCE TARGET; do
   case "$HTTP" in
     200) ok "logged in, project $project found" ;;
     401) fail "credentials rejected (HTTP 401)" ;;
-    *) fail "project $project not found or not visible (HTTP $HTTP)" ;;
+    *)
+      fail "project $project not found or not visible (HTTP $HTTP $(field message))"
+      # show the project keys this login can see on this server
+      api $side GET "/rest/api/1.0/projects?limit=1000"
+      keys=$(printf '%s' "$BODY" | grep -oE '"key" *: *"[^"]*"' | sed -E 's/.*"([^"]*)"$/\1/' | tr '\n' ' ')
+      if [ -n "$keys" ]; then
+        echo "  INFO  project keys you can see on this server: $keys"
+      else
+        echo "  INFO  you cannot see any project on this server: check the login in .env"
+      fi
+      ;;
   esac
 done
 
