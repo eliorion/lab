@@ -4,7 +4,8 @@
 # Usage: scripts/02-test-single-repo.sh <repo-slug>
 
 source "$(dirname "$0")/common.sh"
-slug=${1:?Usage: $0 <repo-slug>}
+[ -n "${1:-}" ] || { echo "Usage: $0 <repo-slug>   (the repository name as in its URL: .../repos/<repo-slug>/browse)"; exit 1; }
+slug=$(lower "$1")   # Bitbucket repository slugs are always lower case
 test_slug="$slug-migration-test"
 
 log "=== test: $SOURCE_PROJECT/$slug -> $TARGET_PROJECT/$test_slug"

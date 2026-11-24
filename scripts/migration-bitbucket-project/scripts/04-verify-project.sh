@@ -9,7 +9,7 @@
 source "$(dirname "$0")/common.sh"
 CHECK_LFS=false
 if [ "${1:-}" = --lfs ]; then CHECK_LFS=true; shift; fi
-if [ $# -gt 0 ]; then repos=$(printf '%s\n' "$@"); else repos=$(list_repos SOURCE "$SOURCE_PROJECT") || exit 1; fi
+if [ $# -gt 0 ]; then repos=$(printf '%s\n' "$@" | tr '[:upper:]' '[:lower:]'); else repos=$(list_repos SOURCE "$SOURCE_PROJECT") || exit 1; fi
 
 TOTAL=$(echo "$repos" | grep -c .)
 INDEX=0; identical=0; different=0

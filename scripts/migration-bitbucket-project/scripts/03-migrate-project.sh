@@ -9,7 +9,7 @@
 source "$(dirname "$0")/common.sh"
 SYNC=false
 if [ "${1:-}" = --sync ]; then SYNC=true; shift; fi
-if [ $# -gt 0 ]; then repos=$(printf '%s\n' "$@"); else repos=$(list_repos SOURCE "$SOURCE_PROJECT") || exit 1; fi
+if [ $# -gt 0 ]; then repos=$(printf '%s\n' "$@" | tr '[:upper:]' '[:lower:]'); else repos=$(list_repos SOURCE "$SOURCE_PROJECT") || exit 1; fi
 
 TOTAL=$(echo "$repos" | grep -c .)
 INDEX=0; ok=0; skipped=0; failed=0
