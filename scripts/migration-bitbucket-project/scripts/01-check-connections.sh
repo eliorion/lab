@@ -108,14 +108,24 @@ if [ -n "${src_repos:-}" ]; then
     echo "$slug ${g:-?} $lf $lb" >>"$SIZES"
   }
 
-  n=$(echo "$src_repos" | grep -c .); i=0
+  # count_line: live progress line with the totals of the repositories measured so far
+  count_line() {
+    awk -v n="$n" -v lfs="$COUNT_LFS" '
+      function h(b, u, i) { split("B KB MB GB TB", u, " "); i = 1; while (b >= 1024 && i < 5) { b /= 1024; i++ }
+                            return sprintf(i == 1 ? "%d %s" : "%.1f %s", b, u[i]) }
+      NR > 1 { d++; if ($2 ~ /^[0-9]+$/) g += $2; if ($4 ~ /^[0-9]+$/) l += $4 }
+      END { if (lfs == "true") printf "\r  measured %d/%d   git data %s   LFS files %s   total %s      ", d, n, h(g), h(l), h(g + l)
+            else printf "\r  measured %d/%d   git data %s      ", d, n, h(g) }' "$SIZES" >&2
+  }
+
+  n=$(echo "$src_repos" | grep -c .)
   for slug in $src_repos; do
-    i=$((i + 1))
-    printf '\r  counting %d/%d  %-50s' "$i" "$n" "$slug" >&2
-    if [ "$PARALLEL" = 1 ]; then size_one "$slug"; else wait_slot; size_one "$slug" & fi
+    if [ "$PARALLEL" = 1 ]; then count_line; size_one "$slug"; else wait_slot; count_line; size_one "$slug" & fi
   done
+  while [ "$(jobs -rp | wc -l)" -gt 0 ]; do wait -n 2>/dev/null || sleep 1; count_line; done
   wait
-  printf '\r%80s\r' '' >&2
+  count_line
+  printf '\r%90s\r' '' >&2
   { head -n 1 "$SIZES"; tail -n +2 "$SIZES" | sort; } >"$SIZES.tmp" && mv -f "$SIZES.tmp" "$SIZES"
   read -r git_total unknown lfs_files_total lfs_total_bytes lfs_unknown <<<"$(awk 'NR > 1 {
       if ($2 ~ /^[0-9]+$/) g += $2; else gu++
