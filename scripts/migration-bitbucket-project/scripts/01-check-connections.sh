@@ -3,6 +3,7 @@
 # Usage: scripts/01-check-connections.sh [--lfs]
 #   --lfs  also counts the Git LFS files of every source repository (slow: downloads the git
 #          data of each repository, not its LFS files, and deletes it right after)
+# PARALLEL in .env = number of repositories measured at the same time (default 1)
 
 source "$(dirname "$0")/common.sh"
 COUNT_LFS=false
@@ -85,27 +86,41 @@ if [ -n "${src_repos:-}" ]; then
   echo "Amount of data (details per repository in output/sizes.txt)"
   SIZES="$OUT/sizes.txt"
   echo "repository git_bytes lfs_files lfs_bytes" >"$SIZES"
-  n=$(echo "$src_repos" | grep -c .); i=0; git_total=0; lfs_files_total=0; lfs_total_bytes=0; unknown=0; lfs_unknown=0
+  PARALLEL=${PARALLEL:-1}
+  [[ "$PARALLEL" =~ ^[1-9][0-9]*$ ]] || PARALLEL=1
+  # wait_slot: waits until fewer than PARALLEL repositories are being measured
+  wait_slot() { while [ "$(jobs -rp | wc -l)" -ge "$PARALLEL" ]; do wait -n 2>/dev/null || sleep 1; done; }
+
+  # size_one SLUG: adds "slug git_bytes lfs_files lfs_bytes" to sizes.txt (? = unknown, - = not counted)
+  size_one() {
+    local slug=$1 g lf=- lb=- tmp="$WORK/size-check-$1.git"
+    g=$(git_size SOURCE "$SOURCE_PROJECT" "$slug")
+    if [ "$COUNT_LFS" = true ]; then
+      # git data only (no LFS files) in a temporary copy, then the LFS files listed in its history
+      rm -rf "$tmp"
+      if git clone -q --bare "$(source_git "$slug")" "$tmp" 2>/dev/null; then
+        read -r lf lb <<<"$(lfs_total "$tmp")"
+      else
+        lf="?"; lb="?"
+      fi
+      rm -rf "$tmp"
+    fi
+    echo "$slug ${g:-?} $lf $lb" >>"$SIZES"
+  }
+
+  n=$(echo "$src_repos" | grep -c .); i=0
   for slug in $src_repos; do
     i=$((i + 1))
     printf '\r  counting %d/%d  %-50s' "$i" "$n" "$slug" >&2
-    g=$(git_size SOURCE "$SOURCE_PROJECT" "$slug")
-    [ -n "$g" ] && git_total=$((git_total + g)) || unknown=$((unknown + 1))
-    lf=""; lb=""
-    if [ "$COUNT_LFS" = true ]; then
-      # git data only (no LFS files) in a temporary copy, then the LFS files listed in its history
-      rm -rf "$WORK/size-check.git"
-      if git clone -q --bare "$(source_git "$slug")" "$WORK/size-check.git" 2>/dev/null; then
-        read -r lf lb <<<"$(lfs_total "$WORK/size-check.git")"
-        lfs_files_total=$((lfs_files_total + lf)); lfs_total_bytes=$((lfs_total_bytes + lb))
-      else
-        lfs_unknown=$((lfs_unknown + 1))
-      fi
-      rm -rf "$WORK/size-check.git"
-    fi
-    echo "$slug ${g:-?} ${lf:--} ${lb:--}" >>"$SIZES"
+    if [ "$PARALLEL" = 1 ]; then size_one "$slug"; else wait_slot; size_one "$slug" & fi
   done
+  wait
   printf '\r%80s\r' '' >&2
+  { head -n 1 "$SIZES"; tail -n +2 "$SIZES" | sort; } >"$SIZES.tmp" && mv -f "$SIZES.tmp" "$SIZES"
+  read -r git_total unknown lfs_files_total lfs_total_bytes lfs_unknown <<<"$(awk 'NR > 1 {
+      if ($2 ~ /^[0-9]+$/) g += $2; else gu++
+      if ($3 ~ /^[0-9]+$/) { lf += $3; lb += $4 } else if ($3 == "?") lu++ }
+    END { printf "%.0f %d %.0f %.0f %d", g, gu, lf, lb, lu }' "$SIZES")"
   echo "  INFO  source $SOURCE_PROJECT: $n repositories, git data $(human "$git_total")$([ "$unknown" -gt 0 ] && echo " (size unknown for $unknown)")"
   if [ "$COUNT_LFS" = true ]; then
     echo "  INFO  source $SOURCE_PROJECT: $lfs_files_total Git LFS files, $(human "$lfs_total_bytes")$([ "$lfs_unknown" -gt 0 ] && echo " (not counted for $lfs_unknown repositories that could not be read)")"
@@ -118,8 +133,13 @@ if [ -n "${src_repos:-}" ]; then
     sort -rn | head -n 5 | while read -r t r; do echo "          $(human "$t")  $r"; done
 
   if [ -n "${tgt_repos:-}" ]; then
-    t_total=0
-    for slug in $tgt_repos; do g=$(git_size TARGET "$TARGET_PROJECT" "$slug"); [ -n "$g" ] && t_total=$((t_total + g)); done
+    : >"$OUT/.target-sizes"
+    for slug in $tgt_repos; do
+      if [ "$PARALLEL" = 1 ]; then git_size TARGET "$TARGET_PROJECT" "$slug" >>"$OUT/.target-sizes"
+      else wait_slot; { git_size TARGET "$TARGET_PROJECT" "$slug"; true; } >>"$OUT/.target-sizes" & fi
+    done
+    wait
+    t_total=$(awk '{ t += $1 } END { printf "%.0f", t }' "$OUT/.target-sizes")
     echo "  INFO  target $TARGET_PROJECT: $(echo "$tgt_repos" | grep -c .) repositories, git data $(human "$t_total") (LFS files not included)"
   fi
   echo "  INFO  already migrated (output/done.txt): $(sort -u "$DONE" | grep -c .) of $n repositories"
