@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
-# Checks everything before a migration. Changes nothing on either server.
-# Usage: scripts/01-check-connections.sh
+# Checks everything before a migration and shows the amount of data. Changes nothing.
+# Usage: scripts/01-check-connections.sh [--lfs]
+#   --lfs  also counts the Git LFS files of every source repository (slow: downloads the git
+#          data of each repository, not its LFS files, and deletes it right after)
 
 source "$(dirname "$0")/common.sh"
+COUNT_LFS=false
+[ "${1:-}" = --lfs ] && COUNT_LFS=true
 FAILS=0
 ok()   { echo "  OK    $*"; }
 fail() { echo "  FAIL  $*"; FAILS=$((FAILS + 1)); }
@@ -69,6 +73,61 @@ else
   fail "cannot list the source repositories"
 fi
 echo "  INFO  free disk space for output/: $(df -h "$OUT" | awk 'NR == 2 { print $4 }') (the biggest repository + its LFS files must fit)"
+
+# git_size SIDE PROJECT SLUG -> bytes of git data reported by Bitbucket (empty if unknown)
+git_size() {
+  api "$1" GET "/projects/$2/repos/$3/sizes"
+  [ "$HTTP" = 200 ] && field repository | grep -E '^[0-9]+$'
+}
+
+if [ -n "${src_repos:-}" ]; then
+  echo
+  echo "Amount of data (details per repository in output/sizes.txt)"
+  SIZES="$OUT/sizes.txt"
+  echo "repository git_bytes lfs_files lfs_bytes" >"$SIZES"
+  n=$(echo "$src_repos" | grep -c .); i=0; git_total=0; lfs_files_total=0; lfs_total_bytes=0; unknown=0; lfs_unknown=0
+  for slug in $src_repos; do
+    i=$((i + 1))
+    printf '\r  counting %d/%d  %-50s' "$i" "$n" "$slug" >&2
+    g=$(git_size SOURCE "$SOURCE_PROJECT" "$slug")
+    [ -n "$g" ] && git_total=$((git_total + g)) || unknown=$((unknown + 1))
+    lf=""; lb=""
+    if [ "$COUNT_LFS" = true ]; then
+      # git data only (no LFS files) in a temporary copy, then the LFS files listed in its history
+      rm -rf "$WORK/size-check.git"
+      if git clone -q --bare "$(source_git "$slug")" "$WORK/size-check.git" 2>/dev/null; then
+        read -r lf lb <<<"$(lfs_total "$WORK/size-check.git")"
+        lfs_files_total=$((lfs_files_total + lf)); lfs_total_bytes=$((lfs_total_bytes + lb))
+      else
+        lfs_unknown=$((lfs_unknown + 1))
+      fi
+      rm -rf "$WORK/size-check.git"
+    fi
+    echo "$slug ${g:-?} ${lf:--} ${lb:--}" >>"$SIZES"
+  done
+  printf '\r%80s\r' '' >&2
+  echo "  INFO  source $SOURCE_PROJECT: $n repositories, git data $(human "$git_total")$([ "$unknown" -gt 0 ] && echo " (size unknown for $unknown)")"
+  if [ "$COUNT_LFS" = true ]; then
+    echo "  INFO  source $SOURCE_PROJECT: $lfs_files_total Git LFS files, $(human "$lfs_total_bytes")$([ "$lfs_unknown" -gt 0 ] && echo " (not counted for $lfs_unknown repositories that could not be read)")"
+    echo "  INFO  total to copy: $(human $((git_total + lfs_total_bytes)))"
+  else
+    echo "  INFO  Git LFS files not counted: run scripts/01-check-connections.sh --lfs (slow)"
+  fi
+  echo "  INFO  biggest repositories:"
+  tail -n +2 "$SIZES" | awk '{ t = ($2 ~ /^[0-9]+$/ ? $2 : 0) + ($4 ~ /^[0-9]+$/ ? $4 : 0); print t, $1 }' |
+    sort -rn | head -n 5 | while read -r t r; do echo "          $(human "$t")  $r"; done
+
+  if [ -n "${tgt_repos:-}" ]; then
+    t_total=0
+    for slug in $tgt_repos; do g=$(git_size TARGET "$TARGET_PROJECT" "$slug"); [ -n "$g" ] && t_total=$((t_total + g)); done
+    echo "  INFO  target $TARGET_PROJECT: $(echo "$tgt_repos" | grep -c .) repositories, git data $(human "$t_total") (LFS files not included)"
+  fi
+  echo "  INFO  already migrated (output/done.txt): $(sort -u "$DONE" | grep -c .) of $n repositories"
+  left=$(awk 'FILENAME == ARGV[1] { done[$1] = 1; next }
+              FNR > 1 && !($1 in done) { t += ($2 ~ /^[0-9]+$/ ? $2 : 0) + ($4 ~ /^[0-9]+$/ ? $4 : 0) }
+              END { printf "%.0f", t }' "$DONE" "$SIZES")
+  echo "  INFO  left to copy (repositories not migrated yet): $(human "$left")$([ "$COUNT_LFS" = false ] && echo " of git data, LFS files not counted")"
+fi
 
 echo
 if [ "$FAILS" -gt 0 ]; then echo "$FAILS check(s) FAILED"; exit 1; fi

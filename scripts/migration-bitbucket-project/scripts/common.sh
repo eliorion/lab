@@ -50,6 +50,9 @@ lfs_total() {
 }
 
 lower() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
+# human BYTES -> "1.2 GB"
+human() { awk -v b="${1:-0}" 'BEGIN { split("B KB MB GB TB", u, " "); i = 1
+  while (b >= 1024 && i < 5) { b /= 1024; i++ }; printf (i == 1 ? "%d %s" : "%.1f %s"), b, u[i] }'; }
 basic() { printf '%s:%s' "$1" "$2" | base64 | tr -d '\n'; }
 
 # ---- credentials ------------------------------------------------------------------------
