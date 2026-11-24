@@ -5,7 +5,7 @@
 #   --sync     also update the repositories already migrated with what changed on the source
 #   repo-slug  migrate only these repositories
 # PARALLEL in .env = number of repositories copied at the same time (default 1).
-# Follow it live from another terminal: tail -f output/migration.log
+# Follow it live from another terminal: scripts/status.sh -w   (or tail -f output/migration.log)
 
 source "$(dirname "$0")/common.sh"
 SYNC=false
@@ -19,11 +19,17 @@ INDEX=0; already=0
 RESULTS="$OUT/.results"   # one line per repository of this run: OK|SKIPPED|FAILED <slug>
 : >"$RESULTS"
 mkdir -p "$OUT/logs"
+# output/progress/: what scripts/status.sh shows (_run = this run, one file per repository being copied)
+rm -rf "$OUT/progress"; mkdir -p "$OUT/progress"
+printf 'total=%s\nstarted=%s\n' "$TOTAL" "$(date '+%Y-%m-%d %H:%M:%S')" >"$OUT/progress/_run"
 
 # migrate_one SLUG: copies one repository and records its result
 migrate_one() {
+  GIT_LOG="$OUT/logs/$1.log"; : >"$GIT_LOG"
   migrate_repo "$1" "$1"
-  case $? in
+  local rc=$?
+  progress_clear "$1"
+  case $rc in
     0) echo "OK $1" >>"$RESULTS"; grep -qx "$1" "$DONE" || echo "$1" >>"$DONE" ;;
     2) echo "SKIPPED $1" >>"$RESULTS" ;;
     *) echo "FAILED $1" >>"$RESULTS" ;;
@@ -42,7 +48,7 @@ for slug in $repos; do
   else
     # wait for a free slot, then copy this repository in the background
     while [ "$(jobs -rp | wc -l)" -ge "$PARALLEL" ]; do sleep 1; done
-    (GIT_LOG="$OUT/logs/$slug.log"; : >"$GIT_LOG"; migrate_one "$slug") &
+    migrate_one "$slug" &
   fi
 done
 wait
@@ -50,6 +56,7 @@ wait
 ok=$(grep -c '^OK ' "$RESULTS")
 failed=$(grep -c '^FAILED ' "$RESULTS")
 skipped=$(($(grep -c '^SKIPPED ' "$RESULTS") + already))
+echo "finished=$(date '+%Y-%m-%d %H:%M:%S')" >>"$OUT/progress/_run"
 log "=== finished: $ok migrated, $skipped skipped, $failed failed (details in $LOG)"
 echo "$(date '+%Y-%m-%d %H:%M:%S')  finished: $ok migrated, $skipped skipped, $failed failed" >"$PROGRESS"
 [ "$failed" = 0 ] || { echo "Run the same command again to retry the failed repositories."; exit 1; }

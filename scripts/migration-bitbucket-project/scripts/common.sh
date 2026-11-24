@@ -31,7 +31,22 @@ log() { echo "$(date '+%Y-%m-%d %H:%M:%S') $*" | tee -a "$LOG"; }
 # progress SLUG STEP - shows where the copy is ($INDEX/$TOTAL are set by the calling script)
 progress() {
   echo "$(date '+%Y-%m-%d %H:%M:%S')  [${INDEX:-1}/${TOTAL:-1}]  $1: $2" >"$PROGRESS"
+  # one status file per repository being copied, read by scripts/status.sh
+  mkdir -p "$OUT/progress"
+  printf 'index=%s\nstep=%s\nlfs_total=%s\n' "${INDEX:-1}/${TOTAL:-1}" "$2" "${LFS_TOTAL:-}" >"$OUT/progress/$1"
   log "[${INDEX:-1}/${TOTAL:-1}] $1: $2"
+}
+progress_clear() { rm -f "$OUT/progress/$1" "$OUT/progress/$1.lfs"; }
+
+# lfs_total DIR -> "<files> <bytes>" of all the Git LFS files referenced in the whole history
+# (read from the LFS pointers stored in git, nothing is downloaded)
+lfs_total() {
+  git -C "$1" rev-list --objects --all | cut -d' ' -f1 |
+    git -C "$1" cat-file --batch-check='%(objecttype) %(objectname) %(objectsize)' |
+    awk '$1 == "blob" && $3 < 1024 { print $2 }' |
+    git -C "$1" cat-file --batch |
+    awk '/^oid sha256:[0-9a-f]+$/ { oid = $2 } /^size [0-9]+$/ && oid != "" { s[oid] = $2; oid = "" }
+         END { for (o in s) { n++; t += s[o] } printf "%d %.0f\n", n, t }'
 }
 
 lower() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
@@ -115,9 +130,13 @@ refs() { git ls-remote --refs --heads --tags "$1" | sort; }
 source_git() { echo "$SOURCE_URL/scm/$(lower "$SOURCE_PROJECT")/$1.git"; }
 target_git() { echo "$TARGET_URL/scm/$(lower "$TARGET_PROJECT")/$1.git"; }
 
-# run COMMAND: git output on screen, or in $GIT_LOG (output/logs/<repo>.log) when several
-# repositories are copied at the same time (PARALLEL > 1)
-run() { if [ -n "${GIT_LOG:-}" ]; then "$@" >>"$GIT_LOG" 2>&1; else "$@"; fi; }
+# run COMMAND: git output on screen and/or in $GIT_LOG (output/logs/<repo>.log); only in the
+# log when several repositories are copied at the same time (PARALLEL > 1)
+run() {
+  if [ -z "${GIT_LOG:-}" ]; then "$@"
+  elif [ "${PARALLEL:-1}" = 1 ]; then "$@" 2>&1 | tee -a "$GIT_LOG"   # on screen + in the log
+  else "$@" >>"$GIT_LOG" 2>&1; fi
+}
 
 # ---- migration of one repository --------------------------------------------------------
 # migrate_repo SOURCE_SLUG TARGET_SLUG [TARGET_NAME]
@@ -127,7 +146,11 @@ migrate_repo() {
   local slug=$1 tslug=$2 tname=${3:-} dir="$WORK/$1.git" name force="" lfs head src tgt src_refs tgt_refs missing
   src=$(source_git "$slug")
   tgt=$(target_git "$tslug")
-  LFS_FILES=0
+  LFS_FILES=0 LFS_TOTAL=""
+  # git-lfs writes the progress of every file there (read by scripts/status.sh)
+  mkdir -p "$OUT/progress"
+  export GIT_LFS_PROGRESS="$OUT/progress/$slug.lfs"
+  : >"$GIT_LFS_PROGRESS"
 
   progress "$slug" "reading the source repository"
   api SOURCE GET "/rest/api/1.0/projects/$SOURCE_PROJECT/repos/$slug"
@@ -164,7 +187,7 @@ migrate_repo() {
     { log "FAILED $slug: cannot create the temporary copy $dir"; return 1; }
 
   progress "$slug" "downloading branches and tags from the source"
-  run git -C "$dir" fetch origin '+refs/heads/*:refs/heads/*' '+refs/tags/*:refs/tags/*' ||
+  run git -C "$dir" fetch --progress origin '+refs/heads/*:refs/heads/*' '+refs/tags/*:refs/tags/*' ||
     { log "FAILED $slug: git fetch from the source${GIT_LOG:+ (details: $GIT_LOG)}"; rm -rf "$dir" 2>/dev/null; return 1; }
   if [ -z "$(git -C "$dir" for-each-ref)" ]; then
     api TARGET PUT "/rest/git-lfs/admin/projects/$TARGET_PROJECT/repos/$tslug/enabled"
@@ -173,6 +196,8 @@ migrate_repo() {
     return 0
   fi
 
+  progress "$slug" "counting the Git LFS files of all branches and tags"
+  LFS_TOTAL=$(lfs_total "$dir")
   progress "$slug" "downloading the Git LFS files of all branches and tags"
   run git -C "$dir" -c lfs.url="$src/info/lfs" lfs fetch --all origin ||
     { log "FAILED $slug: git lfs fetch from the source${GIT_LOG:+ (details: $GIT_LOG)}"; rm -rf "$dir" 2>/dev/null; return 1; }
@@ -188,7 +213,7 @@ migrate_repo() {
   fi
 
   progress "$slug" "uploading branches and tags to the target"
-  run git -C "$dir" push --no-verify target "${force}refs/heads/*:refs/heads/*" "${force}refs/tags/*:refs/tags/*" ||
+  run git -C "$dir" push --progress --no-verify target "${force}refs/heads/*:refs/heads/*" "${force}refs/tags/*:refs/tags/*" ||
     { log "FAILED $slug: git push to the target${GIT_LOG:+ (details: $GIT_LOG)}"; rm -rf "$dir" 2>/dev/null; return 1; }
 
   head=$(git -C "$dir" ls-remote --symref origin HEAD | awk '/^ref:/ { print $2; exit }')

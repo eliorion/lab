@@ -9,7 +9,7 @@ slug=$(lower "$1")   # Bitbucket repository slugs are always lower case
 test_slug="$slug-migration-test"
 
 log "=== test: $SOURCE_PROJECT/$slug -> $TARGET_PROJECT/$test_slug"
-migrate_repo "$slug" "$test_slug" "$test_slug" || exit 1
+migrate_repo "$slug" "$test_slug" "$test_slug" || { progress_clear "$slug"; exit 1; }
 
 progress "$slug" "downloading the copy back from the target"
 dir="$WORK/$test_slug.git"
@@ -20,6 +20,7 @@ git -C "$dir" fetch target '+refs/heads/*:refs/heads/*' '+refs/tags/*:refs/tags/
   { log "TEST FAILED: cannot download the copy back from the target"; exit 1; }
 back=$(find "$dir/lfs/objects" -type f 2>/dev/null | wc -l | tr -d ' ')
 rm -rf "$dir"
+progress_clear "$slug"
 [ "$back" = "$LFS_FILES" ] || { log "TEST FAILED: $LFS_FILES LFS files on the source but $back downloaded from the target"; exit 1; }
 log "TEST OK: branches, tags and $back LFS files identical. Browse: $TARGET_URL/projects/$TARGET_PROJECT/repos/$test_slug"
 

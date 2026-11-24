@@ -10,6 +10,7 @@ scripts/01-check-connections.sh   checks both servers, logins and permissions
 scripts/02-test-single-repo.sh    migrates one repository as a test copy
 scripts/03-migrate-project.sh     migrates all the repositories of the project
 scripts/04-verify-project.sh      checks that the target is an exact copy
+scripts/status.sh                 shows where the migration is (data transferred / left)
 scripts/update.sh                 downloads the latest version of these scripts
 output/                           created by the scripts (log, progress, temporary copies)
 ```
@@ -37,7 +38,10 @@ scripts/03-migrate-project.sh              # all repositories
 scripts/04-verify-project.sh               # add --lfs to also download every LFS file
 ```
 
-- **Follow the migration live** from another terminal: `tail -f output/migration.log`.
+- **See where each repository is** from another terminal: `scripts/status.sh -w`
+  (refreshes every 5 s) shows, for each repository being copied, its step and the data
+  transferred / left, e.g. `LFS download: 1.2 GB of 4.5 GB -> 3.3 GB left (file 57 of 120)`.
+- **Follow the migration live**: `tail -f output/migration.log`.
   `output/progress.txt` always shows the current position, e.g.
   `[37/212] my-repo: uploading 120 Git LFS files to the target`.
 - **Several repositories at once**: set `PARALLEL='3'` in `.env` (2 to 4 recommended).

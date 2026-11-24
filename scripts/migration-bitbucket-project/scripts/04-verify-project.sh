@@ -49,6 +49,7 @@ for slug in $repos; do
   identical=$((identical + 1))
 done
 
+for slug in $repos; do progress_clear "$slug"; done
 log "=== verification finished: $identical identical, $different different"
 echo "$(date '+%Y-%m-%d %H:%M:%S')  verification finished: $identical identical, $different different" >"$PROGRESS"
 [ "$different" = 0 ] || { echo "Update the different ones with: scripts/03-migrate-project.sh --sync <repo-slug ...>"; exit 1; }

@@ -8,7 +8,8 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 URL="https://raw.githubusercontent.com/eliorion/lab/main/scripts/migration-bitbucket-project"
 FILES="scripts/common.sh scripts/01-check-connections.sh scripts/02-test-single-repo.sh
-       scripts/03-migrate-project.sh scripts/04-verify-project.sh README.md .env.example .gitignore .gitattributes"
+       scripts/03-migrate-project.sh scripts/04-verify-project.sh scripts/status.sh
+       README.md .env.example .gitignore .gitattributes"
 TMP="$ROOT/scripts/.download.tmp"
 
 # download FILE -> $TMP
