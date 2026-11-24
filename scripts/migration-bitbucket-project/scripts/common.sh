@@ -45,17 +45,24 @@ else
 fi
 TARGET_AUTH="Authorization: Basic $(basic "${TARGET_USER:-}" "${TARGET_PASSWORD:-}")"
 
-# git and git-lfs receive the credentials as HTTP headers through environment variables:
-# nothing is written in a git config file or visible in the process list.
-export GIT_CONFIG_COUNT=3
-export GIT_CONFIG_KEY_0="http.$SOURCE_URL/.extraHeader" GIT_CONFIG_VALUE_0="$SOURCE_AUTH"
-export GIT_CONFIG_KEY_1="http.$TARGET_URL/.extraHeader" GIT_CONFIG_VALUE_1="$TARGET_AUTH"
-export GIT_CONFIG_KEY_2="lfs.locksverify" GIT_CONFIG_VALUE_2="false"
-export GIT_TERMINAL_PROMPT=0
+# git and git-lfs get the logins from a small credential helper reading these variables:
+# they send them only when the server asks for them (never twice in the same request).
+# Your own saved git credentials (Windows credential manager...) are not used.
+export MIG_SOURCE_USER="${SOURCE_USER:-}" MIG_SOURCE_PASS="${SOURCE_TOKEN:-${SOURCE_PASSWORD:-}}"
+export MIG_TARGET_USER="${TARGET_USER:-}" MIG_TARGET_PASS="${TARGET_PASSWORD:-}"
+export GIT_CONFIG_COUNT=4
+export GIT_CONFIG_KEY_0="credential.helper" GIT_CONFIG_VALUE_0=""
+# (git asks for a login with the server address only: scheme://host:port, without any path)
+export GIT_CONFIG_KEY_1="credential.$(printf '%s' "$SOURCE_URL" | sed -E 's#^([a-z]+://[^/]+).*#\1#').helper"
+export GIT_CONFIG_VALUE_1='!f() { if [ "$1" = get ]; then printf "username=%s\npassword=%s\n" "$MIG_SOURCE_USER" "$MIG_SOURCE_PASS"; fi; }; f'
+export GIT_CONFIG_KEY_2="credential.$(printf '%s' "$TARGET_URL" | sed -E 's#^([a-z]+://[^/]+).*#\1#').helper"
+export GIT_CONFIG_VALUE_2='!f() { if [ "$1" = get ]; then printf "username=%s\npassword=%s\n" "$MIG_TARGET_USER" "$MIG_TARGET_PASS"; fi; }; f'
+export GIT_CONFIG_KEY_3="lfs.locksverify" GIT_CONFIG_VALUE_3="false"
+export GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=never
 # Windows (Git Bash) only: trust the certificates of the Windows certificate store
 if [ "${WINDOWS_CERT_STORE:-false}" = true ]; then
-  export CURL_SSL_BACKEND=schannel GIT_CONFIG_COUNT=4
-  export GIT_CONFIG_KEY_3="http.sslBackend" GIT_CONFIG_VALUE_3="schannel"
+  export CURL_SSL_BACKEND=schannel GIT_CONFIG_COUNT=5
+  export GIT_CONFIG_KEY_4="http.sslBackend" GIT_CONFIG_VALUE_4="schannel"
 fi
 
 # ---- REST API ---------------------------------------------------------------------------

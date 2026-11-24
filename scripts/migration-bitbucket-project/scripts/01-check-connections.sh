@@ -15,6 +15,9 @@ done
 [ "$(GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=test.key GIT_CONFIG_VALUE_0=yes git config test.key)" = yes ] &&
   ok "$(git --version)" || fail "$(git --version) is too old: git >= 2.31 is required"
 
+# git sends the token as the password of your username
+[ -n "${SOURCE_TOKEN:-}" ] && [ -z "${SOURCE_USER:-}" ] && fail "SOURCE_USER is empty in .env: git needs your Bitbucket username with the token"
+
 for side in SOURCE TARGET; do
   if [ $side = SOURCE ]; then url=$SOURCE_URL project=$SOURCE_PROJECT; else url=$TARGET_URL project=$TARGET_PROJECT; fi
   echo

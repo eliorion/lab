@@ -21,8 +21,9 @@ network access to both servers. Nothing else (no jq, no python).
 
 ## Logins
 
-- **Source (7.21.10)**: an HTTP access token with read permissions is recommended
-  (avatar ➜ Manage account ➜ HTTP access tokens). Username/password also works.
+- **Source (7.21.10)**: your username + an HTTP access token with read permissions is
+  recommended (avatar ➜ Manage account ➜ HTTP access tokens). Username/password also works.
+  The username is always needed: git sends the token as the password of your username.
 - **Target (4.14.2)**: username and password. Tokens do not exist before Bitbucket 5.5.
   You need to be **admin of the target project**, and the project must already exist.
 
