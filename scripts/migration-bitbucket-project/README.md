@@ -40,6 +40,9 @@ scripts/04-verify-project.sh               # add --lfs to also download every LF
 - **Follow the migration live** from another terminal: `tail -f output/migration.log`.
   `output/progress.txt` always shows the current position, e.g.
   `[37/212] my-repo: uploading 120 Git LFS files to the target`.
+- **Several repositories at once**: set `PARALLEL='3'` in `.env` (2 to 4 recommended).
+  `migration.log` still shows every step; the git details of each repository go to
+  `output/logs/<repo>.log`.
 - **Resume**: run `03-migrate-project.sh` again. Repositories listed in `output/done.txt`
   are skipped.
 - **Update before the switch**: if people kept working on the old server, run
@@ -61,6 +64,7 @@ Your `.env` and `output/` are never touched. If you need an internet proxy, set 
 | `migration.log` | one line per step and per repository (OK / FAILED / SKIPPED + reason) |
 | `progress.txt` | where the copy is right now |
 | `done.txt` | repositories already migrated |
+| `logs/<repo>.log` | git details of each repository (only with `PARALLEL` > 1) |
 | `work/` | temporary copy of the repository being migrated (deleted after each one) |
 
 ## Not migrated

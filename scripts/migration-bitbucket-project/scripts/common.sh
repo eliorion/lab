@@ -115,6 +115,10 @@ refs() { git ls-remote --refs --heads --tags "$1" | sort; }
 source_git() { echo "$SOURCE_URL/scm/$(lower "$SOURCE_PROJECT")/$1.git"; }
 target_git() { echo "$TARGET_URL/scm/$(lower "$TARGET_PROJECT")/$1.git"; }
 
+# run COMMAND: git output on screen, or in $GIT_LOG (output/logs/<repo>.log) when several
+# repositories are copied at the same time (PARALLEL > 1)
+run() { if [ -n "${GIT_LOG:-}" ]; then "$@" >>"$GIT_LOG" 2>&1; else "$@"; fi; }
+
 # ---- migration of one repository --------------------------------------------------------
 # migrate_repo SOURCE_SLUG TARGET_SLUG [TARGET_NAME]
 # returns 0 = OK, 1 = failed, 2 = skipped (already on the target, SYNC=false)
@@ -154,8 +158,8 @@ migrate_repo() {
   git init -q --bare "$dir" && git -C "$dir" remote add origin "$src" && git -C "$dir" remote add target "$tgt"
 
   progress "$slug" "downloading branches and tags from the source"
-  git -C "$dir" fetch origin '+refs/heads/*:refs/heads/*' '+refs/tags/*:refs/tags/*' ||
-    { log "FAILED $slug: git fetch from the source"; rm -rf "$dir"; return 1; }
+  run git -C "$dir" fetch origin '+refs/heads/*:refs/heads/*' '+refs/tags/*:refs/tags/*' ||
+    { log "FAILED $slug: git fetch from the source${GIT_LOG:+ (details: $GIT_LOG)}"; rm -rf "$dir"; return 1; }
   if [ -z "$(git -C "$dir" for-each-ref)" ]; then
     api TARGET PUT "/rest/git-lfs/admin/projects/$TARGET_PROJECT/repos/$tslug/enabled"
     rm -rf "$dir"
@@ -164,8 +168,8 @@ migrate_repo() {
   fi
 
   progress "$slug" "downloading the Git LFS files of all branches and tags"
-  git -C "$dir" -c lfs.url="$src/info/lfs" lfs fetch --all origin ||
-    { log "FAILED $slug: git lfs fetch from the source"; rm -rf "$dir"; return 1; }
+  run git -C "$dir" -c lfs.url="$src/info/lfs" lfs fetch --all origin ||
+    { log "FAILED $slug: git lfs fetch from the source${GIT_LOG:+ (details: $GIT_LOG)}"; rm -rf "$dir"; return 1; }
   lfs=$(find "$dir/lfs/objects" -type f 2>/dev/null | wc -l | tr -d ' ')
   LFS_FILES=$lfs
 
@@ -173,13 +177,13 @@ migrate_repo() {
   if [ "$lfs" -gt 0 ]; then
     case "$HTTP" in 2*) ;; *) log "FAILED $slug: cannot enable Git LFS on the target (HTTP $HTTP)"; rm -rf "$dir"; return 1 ;; esac
     progress "$slug" "uploading $lfs Git LFS files to the target"
-    git -C "$dir" -c lfs.url="$tgt/info/lfs" lfs push --all target ||
-      { log "FAILED $slug: git lfs push to the target"; rm -rf "$dir"; return 1; }
+    run git -C "$dir" -c lfs.url="$tgt/info/lfs" lfs push --all target ||
+      { log "FAILED $slug: git lfs push to the target${GIT_LOG:+ (details: $GIT_LOG)}"; rm -rf "$dir"; return 1; }
   fi
 
   progress "$slug" "uploading branches and tags to the target"
-  git -C "$dir" push --no-verify target "${force}refs/heads/*:refs/heads/*" "${force}refs/tags/*:refs/tags/*" ||
-    { log "FAILED $slug: git push to the target"; rm -rf "$dir"; return 1; }
+  run git -C "$dir" push --no-verify target "${force}refs/heads/*:refs/heads/*" "${force}refs/tags/*:refs/tags/*" ||
+    { log "FAILED $slug: git push to the target${GIT_LOG:+ (details: $GIT_LOG)}"; rm -rf "$dir"; return 1; }
 
   head=$(git -C "$dir" ls-remote --symref origin HEAD | awk '/^ref:/ { print $2; exit }')
   [ -n "$head" ] && api TARGET PUT "/rest/api/1.0/projects/$TARGET_PROJECT/repos/$tslug/branches/default" "{\"id\":\"$head\"}"
