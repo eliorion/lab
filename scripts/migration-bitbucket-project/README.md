@@ -10,6 +10,7 @@ scripts/01-check-connections.sh   checks both servers, logins and permissions
 scripts/02-test-single-repo.sh    migrates one repository as a test copy
 scripts/03-migrate-project.sh     migrates all the repositories of the project
 scripts/04-verify-project.sh      checks that the target is an exact copy
+scripts/update.sh                 downloads the latest version of these scripts
 output/                           created by the scripts (log, progress, temporary copies)
 ```
 
@@ -42,6 +43,15 @@ scripts/04-verify-project.sh               # add --lfs to also download every LF
   are skipped.
 - **Update before the switch**: if people kept working on the old server, run
   `scripts/03-migrate-project.sh --sync`. It pushes what changed. Nothing is ever deleted.
+
+## Get the latest version
+
+```bash
+scripts/update.sh
+```
+
+Downloads the latest version of every script from GitHub and tells you which files changed.
+Your `.env` and `output/` are never touched. If you need an internet proxy, set `PROXY` in `.env`.
 
 ## The output/ folder
 
