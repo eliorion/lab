@@ -61,7 +61,6 @@ fi
 # ---- REST API ---------------------------------------------------------------------------
 # api SOURCE|TARGET METHOD PATH [JSON]  ->  sets $HTTP (status code) and $BODY (response)
 # The SOURCE server only accepts GET: the scripts can never modify it.
-# The login header is given to curl on its standard input (never on the command line).
 api() {
   local side=$1 method=$2 path=$3 data=${4:-} url auth out
   if [ "$side" = SOURCE ]; then
@@ -71,12 +70,9 @@ api() {
     url=$TARGET_URL auth=$TARGET_AUTH
   fi
   if [ -n "$data" ]; then
-    out=$(curl -sS --connect-timeout 15 -K - <<<"header = \"$auth\"" -X "$method" \
-      -H 'Content-Type: application/json' -H 'X-Atlassian-Token: no-check' -d "$data" \
-      -w '\n%{http_code}' "$url$path")
+    out=$(curl -sS -H "$auth" -H 'X-Atlassian-Token: no-check' -H 'Content-Type: application/json' -X "$method" -d "$data" -w '\n%{http_code}' "$url$path")
   else
-    out=$(curl -sS --connect-timeout 15 -K - <<<"header = \"$auth\"" -X "$method" \
-      -H 'X-Atlassian-Token: no-check' -w '\n%{http_code}' "$url$path")
+    out=$(curl -sS -H "$auth" -H 'X-Atlassian-Token: no-check' -X "$method" -w '\n%{http_code}' "$url$path")
   fi
   HTTP=${out##*$'\n'}
   BODY=${out%$'\n'*}
